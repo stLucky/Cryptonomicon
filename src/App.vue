@@ -263,6 +263,7 @@ export default {
         (price) => 5 + ((price - minValue) * 95) / (maxValue - minValue)
       );
     },
+
     isHaveTicker() {
       return this.tickers.some(
         (ticker) => ticker.name === this.name.toUpperCase()
@@ -308,6 +309,22 @@ export default {
   },
 
   methods: {
+    subscribeToUpdates(tickerName) {
+      setInterval(async () => {
+        const response = await fetch(
+          `https://min-api.cryptocompare.com/data/price?fsym=${tickerName}&tsyms=USD&api_key={076094e3b40b763b4bcce11a7c64c5158362c6ba8632a52204128f478e9d5202}`
+        );
+
+        const data = await response.json();
+
+        this.tickers.find((ticker) => ticker.name === tickerName).price =
+          data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
+
+        if (this.selected?.name === tickerName) {
+          this.graph.push(data.USD);
+        }
+      }, 5000);
+    },
     add() {
       if (!this.isHaveTicker && this.name) {
         const newTicker = {
@@ -317,21 +334,8 @@ export default {
 
         this.tickers.push(newTicker);
 
-        setInterval(async () => {
-          const response = await fetch(
-            `https://min-api.cryptocompare.com/data/price?fsym=${newTicker.name}&tsyms=USD&api_key={076094e3b40b763b4bcce11a7c64c5158362c6ba8632a52204128f478e9d5202}`
-          );
-
-          const data = await response.json();
-
-          this.tickers.find((ticker) => ticker.name === newTicker.name).price =
-            data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
-
-          if (this.selected?.name === newTicker.name) {
-            this.graph.push(data.USD);
-          }
-        }, 5000);
-
+        localStorage.setItem("coins-list", JSON.stringify(this.tickers));
+        this.subscribeToUpdates(newTicker.name);
         this.name = "";
       } else if (this.name) {
         this.showAlert = true;
@@ -350,6 +354,7 @@ export default {
 
     remove(currentTicker) {
       this.tickers = this.tickers.filter((ticker) => ticker !== currentTicker);
+      localStorage.setItem("coins-list", JSON.stringify(this.tickers));
     },
 
     select(ticker) {
@@ -373,6 +378,15 @@ export default {
     };
 
     getAllCoins();
+
+    const tickersData = localStorage.getItem("coins-list");
+
+    if (tickersData) {
+      this.tickers = JSON.parse(tickersData);
+      this.tickers.forEach((ticker) => {
+        this.subscribeToUpdates(ticker.name);
+      });
+    }
   },
 };
 </script>
