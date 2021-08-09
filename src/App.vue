@@ -82,7 +82,7 @@
                   text-gray-800
                   cursor-pointer
                 "
-                v-for="coin of getSliceCoins"
+                v-for="coin of visibleTooltipCoins"
                 :key="coin.Symbol"
                 :value="coin.Symbol"
                 @click="onTooltipClick(coin), add()"
@@ -228,9 +228,9 @@
               border-purple-800 border-solid
               cursor-pointer
             "
-            v-for="ticker of pageTickers"
+            v-for="ticker of paginatedTickers"
             :key="ticker.name"
-            :class="{ 'border-4': selected === ticker }"
+            :class="{ 'border-4': selectedTicker === ticker }"
             @click="select(ticker)"
           >
             <div class="px-4 py-5 sm:p-6 text-center">
@@ -278,14 +278,14 @@
         </dl>
         <hr class="w-full border-t border-gray-600 my-4" />
       </template>
-      <section class="relative" v-if="selected">
+      <section class="relative" v-if="selectedTicker">
         <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
-          {{ selected.name }} - USD
+          {{ selectedTicker.name }} - USD
         </h3>
         <div class="flex items-end border-gray-600 border-b border-l h-64">
           <div
             class="bg-purple-800 border w-10"
-            v-for="bar in normalizeGraph"
+            v-for="bar in normalizedGraph"
             :style="{ height: `${bar}%` }"
             :key="bar.price"
           ></div>
@@ -293,7 +293,7 @@
         <button
           type="button"
           class="absolute top-0 right-0"
-          @click="selected = null"
+          @click="selectedTicker = null"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -323,28 +323,30 @@
 </template>
 
 <script>
-const VISIBLE_TICKERS = 6;
+const VISIBLE_TICKERS_PAGE = 6;
+const MAX_VISIBLE_COINS = 4;
 
 export default {
   name: "App",
   data: () => ({
     name: "",
     tickers: [],
-    selected: null,
+    selectedTicker: null,
     graph: [],
     allCoins: "",
     showAlert: false,
     page: 1,
     filter: "",
+    visibleTooltipCoins: [],
   }),
 
   computed: {
-    startTicker() {
-      return (this.page - 1) * VISIBLE_TICKERS;
+    startIndexPage() {
+      return (this.page - 1) * VISIBLE_TICKERS_PAGE;
     },
 
-    endTicker() {
-      return this.page * VISIBLE_TICKERS;
+    endIndexPage() {
+      return this.page * VISIBLE_TICKERS_PAGE;
     },
 
     filteredTickers() {
@@ -353,32 +355,39 @@ export default {
       );
     },
 
-    pageTickers() {
-      return this.filteredTickers.slice(this.startTicker, this.endTicker);
+    paginatedTickers() {
+      return this.filteredTickers.slice(this.startIndexPage, this.endIndexPage);
     },
 
     hasNextPage() {
-      return this.filteredTickers.length > this.endTicker;
+      return this.filteredTickers.length > this.endIndexPage;
     },
 
-    normalizeGraph() {
+    normalizedGraph() {
       const maxValue = Math.max(...this.graph);
       const minValue = Math.min(...this.graph);
+
+      if (maxValue === minValue) {
+        return this.graph.map(() => 50);
+      }
 
       return this.graph.map(
         (price) => 5 + ((price - minValue) * 95) / (maxValue - minValue)
       );
     },
 
-    isHaveTicker() {
+    hasTicker() {
       return this.tickers.some(
         (ticker) => ticker.name === this.name.toUpperCase()
       );
     },
 
-    getSimilarCoins() {
-      const coinsArray = Object.values(this.allCoins);
-      return coinsArray.filter((coin) => {
+    allCoinsNames() {
+      return Object.values(this.allCoins);
+    },
+
+    filteredCoins() {
+      return this.allCoinsNames.filter((coin) => {
         if (this.name === "") {
           return false;
         }
@@ -386,35 +395,25 @@ export default {
       });
     },
 
-    getFullMatchCoin() {
-      return this.getSimilarCoins.find(
+    fullMatchCoin() {
+      return this.filteredCoins.find(
         (coin) => coin.Symbol === this.name.toUpperCase()
       );
     },
 
-    getSliceCoins() {
-      const MAX_VISIBLE_COINS = 4;
-      const sliceCoins = [];
-      const sliceInterimCoins = this.getSimilarCoins.slice(
-        0,
-        MAX_VISIBLE_COINS
-      );
-
-      if (this.getFullMatchCoin) {
-        const duplicateCoinIndex = sliceInterimCoins.findIndex(
-          (coin) => coin === this.getFullMatchCoin
-        );
-        sliceInterimCoins.splice(duplicateCoinIndex, 1);
-        sliceCoins.push(this.getFullMatchCoin, ...sliceInterimCoins);
-      } else {
-        sliceCoins.push(...sliceInterimCoins);
-      }
-
-      return sliceCoins;
+    filteredSliceCoins() {
+      return this.filteredCoins.slice(0, MAX_VISIBLE_COINS);
     },
 
     isEmptyTooltip() {
-      return this.getSliceCoins.length > 0;
+      return this.visibleTooltipCoins.length > 0;
+    },
+
+    pageStateOptions() {
+      return {
+        filter: this.filter,
+        page: this.page,
+      };
     },
   },
 
@@ -430,22 +429,22 @@ export default {
         this.tickers.find((ticker) => ticker.name === tickerName).price =
           data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
 
-        if (this.selected?.name === tickerName) {
+        if (this.selectedTicker?.name === tickerName) {
           this.graph.push(data.USD);
         }
       }, 5000);
     },
 
     add() {
-      if (!this.isHaveTicker && this.name) {
+      if (!this.hasTicker && this.name) {
         const newTicker = {
           name: this.name.toUpperCase(),
           price: "-",
         };
 
-        this.tickers.push(newTicker);
+        this.tickers = [...this.tickers, newTicker];
         this.filter = "";
-        localStorage.setItem("coins-list", JSON.stringify(this.tickers));
+
         this.subscribeToUpdates(newTicker.name);
         this.name = "";
       } else if (this.name) {
@@ -465,28 +464,56 @@ export default {
 
     remove(currentTicker) {
       this.tickers = this.tickers.filter((ticker) => ticker !== currentTicker);
-      localStorage.setItem("coins-list", JSON.stringify(this.tickers));
+      if (this.selectedTicker === currentTicker) {
+        this.selectedTicker = null;
+      }
     },
 
     select(ticker) {
-      this.selected = ticker;
-      this.graph = [];
+      this.selectedTicker = ticker;
     },
   },
+
   watch: {
+    filteredSliceCoins() {
+      if (this.fullMatchCoin) {
+        const duplicateCoinIndex = this.filteredSliceCoins.findIndex(
+          (coin) => coin === this.fullMatchCoin
+        );
+        this.filteredSliceCoins.splice(duplicateCoinIndex, 1);
+        this.visibleTooltipCoins = [];
+        this.visibleTooltipCoins.push(
+          this.fullMatchCoin,
+          ...this.filteredSliceCoins
+        );
+      } else {
+        this.visibleTooltipCoins = this.filteredSliceCoins;
+      }
+    },
+
+    tickers() {
+      localStorage.setItem("coins-list", JSON.stringify(this.tickers));
+    },
+
+    selectedTicker() {
+      this.graph = [];
+    },
+
+    paginatedTickers() {
+      if (this.paginatedTickers.length === 0) {
+        this.page = Math.max(1, this.page - 1);
+      }
+    },
+
     filter() {
       this.page = 1;
-      window.history.pushState(
-        null,
-        "",
-        `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
-      );
     },
-    page() {
+
+    pageStateOptions(value) {
       window.history.pushState(
         null,
         "",
-        `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
+        `${window.location.pathname}?filter=${value.filter}&page=${value.page}`
       );
     },
   },
@@ -495,6 +522,7 @@ export default {
     const windowData = Object.fromEntries(
       new URL(window.location).searchParams.entries()
     );
+
     if (windowData.filter) {
       this.filter = windowData.filter;
     }
