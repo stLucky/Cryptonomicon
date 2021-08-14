@@ -281,11 +281,14 @@
         <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
           {{ selectedTicker.name }} - USD
         </h3>
-        <div class="flex items-end border-gray-600 border-b border-l h-64">
+        <div
+          class="flex items-end border-gray-600 border-b border-l h-64"
+          ref="graph"
+        >
           <div
-            class="bg-purple-800 border w-10"
+            class="bg-purple-800 border"
             v-for="bar in normalizedGraph"
-            :style="{ height: `${bar}%` }"
+            :style="{ height: `${bar}%`, width: `${widthBarElement}px` }"
             :key="bar.price"
           ></div>
         </div>
@@ -343,6 +346,8 @@ export default {
     page: 1,
     filter: "",
     visibleTooltipCoins: [],
+    maxQuantityGraphElements: 1,
+    widthBarElement: 40,
   }),
 
   computed: {
@@ -432,9 +437,28 @@ export default {
         return price > 1 ? price.toFixed(2) : price.toPrecision(2);
       };
     },
+
+    deletedNumberElementsGraph() {
+      return Math.ceil(this.graph.length - this.maxQuantityGraphElements);
+    },
+
+    parametersGraph() {
+      return {
+        length: this.graph.length,
+        quantityBars: this.maxQuantityGraphElements,
+      };
+    },
   },
 
   methods: {
+    calculateMaxQuantityGraphElements() {
+      if (!this.$refs.graph) {
+        return;
+      }
+      this.maxQuantityGraphElements =
+        this.$refs.graph.clientWidth / this.widthBarElement;
+    },
+
     updateTickers(tickerName, price) {
       this.tickers
         .filter((ticker) => ticker.name === tickerName)
@@ -484,10 +508,16 @@ export default {
 
     select(ticker) {
       this.selectedTicker = ticker;
+      this.$nextTick().then(this.calculateMaxQuantityGraphElements);
     },
   },
 
   watch: {
+    parametersGraph(value) {
+      if (value.length > value.quantityBars) {
+        this.graph.splice(0, this.deletedNumberElementsGraph);
+      }
+    },
     filteredSliceCoins() {
       if (this.fullMatchCoin) {
         const duplicateCoinIndex = this.filteredSliceCoins.findIndex(
@@ -557,6 +587,17 @@ export default {
         );
       });
     }
+  },
+
+  mounted() {
+    window.addEventListener("resize", this.calculateMaxQuantityGraphElements);
+  },
+
+  beforeMount() {
+    window.removeEventListener(
+      "resize",
+      this.calculateMaxQuantityGraphElements
+    );
   },
 };
 </script>
